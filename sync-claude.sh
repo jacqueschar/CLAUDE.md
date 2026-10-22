@@ -1,8 +1,8 @@
 # CLAUDE.md Sync Script
-# Syncs any root subfolder's .claude/CLAUDE.md to ~/.claude/CLAUDE.md
-# Usage: ./sync-claude.sh [--dry-run] [folder-name]
-#   - Lists available folders containing .claude/CLAUDE.md, defaults to coding/ if present
-#   - With an arg, picks that folder using fuzzy/substring matching
+# Syncs a profile markdown file from this repo to ~/.claude/CLAUDE.md
+# Usage: ./sync-claude.sh [--dry-run] [profile]
+#   - Defaults to ./CLAUDE.md (coding guidelines)
+#   - With an arg, picks a profile by fuzzy/substring match (e.g. "acad" -> academic.md)
 #   - Prompts for override if ~/.claude/CLAUDE.md already exists
 #   - With --dry-run, prints what would happen without copying or prompting
 #   - Side effects: overwrites ~/.claude/CLAUDE.md after confirmation
@@ -13,6 +13,7 @@ set -euo pipefail
 CONFIG_SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DEST_DIR="$HOME/.claude"
 CONFIG_DEST_FILE="$CONFIG_DEST_DIR/CLAUDE.md"
+CONFIG_DEFAULT_PROFILE="CLAUDE"
 
 dry_run=0
 choice=""
@@ -24,34 +25,36 @@ for arg in "$@"; do
   esac
 done
 
-folders=()
-for f in "$CONFIG_SRC_DIR"/*/.claude/CLAUDE.md; do
+profiles=()
+for f in "$CONFIG_SRC_DIR"/*.md; do
   [ -f "$f" ] || continue
-  name=$(basename "$(dirname "$(dirname "$f")")")
-  folders+=("$name")
+  name=$(basename "$f" .md)
+  if [ "$name" != "README" ]; then
+    profiles+=("$name")
+  fi
 done
 
-if [ ${#folders[@]} -eq 0 ]; then
-  echo "Error: No CLAUDE.md found in any subfolder." >&2
-  echo "Checked: $CONFIG_SRC_DIR/*/.claude/CLAUDE.md" >&2
+if [ ${#profiles[@]} -eq 0 ]; then
+  echo "Error: No profile .md files found." >&2
+  echo "Checked: $CONFIG_SRC_DIR/*.md" >&2
   exit 1
 fi
 
-# No folder given: default to coding/ if present, otherwise list and prompt.
+# No profile given: default to CLAUDE.md if present, otherwise list and prompt.
 if [ -z "$choice" ]; then
-  if printf '%s\n' "${folders[@]}" | grep -q '^coding$'; then
-    choice="coding"
-    echo "Defaulted to: coding/"
+  if printf '%s\n' "${profiles[@]}" | grep -qx "$CONFIG_DEFAULT_PROFILE"; then
+    choice="$CONFIG_DEFAULT_PROFILE"
+    echo "Defaulted to: $CONFIG_DEFAULT_PROFILE.md"
   else
-    echo "Available folders with CLAUDE.md:"
-    for f in "${folders[@]}"; do
-      echo "  $f"
+    echo "Available profiles:"
+    for f in "${profiles[@]}"; do
+      echo "  $f.md"
     done
     if [ -t 0 ]; then
       printf "Choose one: "
       read -r choice
     else
-      echo "Error: No folder given and stdin is not a terminal." >&2
+      echo "Error: No profile given and stdin is not a terminal." >&2
       exit 1
     fi
   fi
@@ -59,14 +62,14 @@ fi
 
 # Fuzzy/substring match against the requested name.
 matches=()
-for f in "${folders[@]}"; do
+for f in "${profiles[@]}"; do
   case "$f" in
     *"$choice"*) matches+=("$f") ;;
   esac
 done
 
 if [ ${#matches[@]} -eq 0 ]; then
-  echo "Error: No folder matches '$choice'. Available: ${folders[*]}" >&2
+  echo "Error: No profile matches '$choice'. Available: ${profiles[*]}" >&2
   exit 1
 fi
 
@@ -74,7 +77,7 @@ if [ ${#matches[@]} -gt 1 ]; then
   echo "Multiple matches for '$choice':"
   if [ -t 0 ]; then
     for i in "${!matches[@]}"; do
-      echo "  $((i+1)). ${matches[$i]}"
+      echo "  $((i+1)). ${matches[$i]}.md"
     done
     printf "Pick a number: "
     read -r idx
@@ -91,10 +94,10 @@ else
   choice="${matches[0]}"
 fi
 
-src_file="$CONFIG_SRC_DIR/$choice/.claude/CLAUDE.md"
+src_file="$CONFIG_SRC_DIR/$choice.md"
 
 if [ "$dry_run" -eq 1 ]; then
-  echo "[dry-run] Would copy $choice/.claude/CLAUDE.md -> $CONFIG_DEST_FILE"
+  echo "[dry-run] Would copy $choice.md -> $CONFIG_DEST_FILE"
   if [ -f "$CONFIG_DEST_FILE" ]; then
     echo "[dry-run] Existing file would be overwritten: $CONFIG_DEST_FILE"
   fi
@@ -121,4 +124,4 @@ if [ -f "$CONFIG_DEST_FILE" ]; then
 fi
 
 cp "$src_file" "$CONFIG_DEST_FILE"
-echo "Done. Copied $choice/.claude/CLAUDE.md -> $CONFIG_DEST_FILE"
+echo "Done. Copied $choice.md -> $CONFIG_DEST_FILE"
